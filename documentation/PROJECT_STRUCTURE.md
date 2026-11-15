@@ -116,5 +116,5 @@ The flow is: **Write code** → **CMake configures** → **Compiler builds** →
 
 ## Further Reading
 
-- [`BEST_PRACTICES.md`](BEST_PRACTICES.md) — How to structure your project as it grows
-- [`GODOT_COMPARISON.md`](GODOT_COMPARISON.md) — How C++ + SDL compares to the Godot engine
+- [`CPP_CMake_SDL3_PROJECTS.md`](CPP_CMake_SDL3_PROJECTS.md) — How to structure your project as it grows
+- [`GODOT_PROJECTS.md`](GODOT_PROJECTS.md) — How C++ + SDL compares to the Godot engine
