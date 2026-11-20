@@ -13,7 +13,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Make Windows headers use wide character set
 add_definitions(/D UNICODE /D _UNICODE)
 
-
 # download CPM.cmake, which makes version control easier to handle for CMake Fetch
 file(
   DOWNLOAD
@@ -25,8 +24,8 @@ include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
 
 # set the output directory for built objects.
 # This makes sure that the dynamic library goes into the build directory automatically.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIGURATION>")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIGURATION>")
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendored/SDL")
 	# This assumes you have added SDL as a submodule in vendored/SDL
