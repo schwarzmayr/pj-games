@@ -14,16 +14,16 @@ int main(int argc, char *argv[]){
 		return 1;
 	}
 
-	// load game assets. SDL_texture is a memory holding an image on a graphics card
-	// A surface object on the other hands allows us to access the memory that is stored in the CPU instead.
-	SDL_Texture *idleTex = IMG_LoadTexture(state.renderer, "data/idle.png");
-	SDL_SetTextureScaleMode(idleTex, SDL_SCALEMODE_NEAREST);
+	// load game assets
+	Resources res;
+	res.load(state);
 
 	// setup game data
-	const bool *keys = SDL_GetKeyboardState(nullptr);
+	const bool* keys = SDL_GetKeyboardState(nullptr);
 	float playerX = 150;
 	const float floor = state.logH;
 	uint64_t prevTime = SDL_GetTicks();
+	bool flipHorizontal = false;
 
 	// start game loop
 	bool running = true;
@@ -52,9 +52,11 @@ int main(int argc, char *argv[]){
 		float moveAmount = 0;
 		if (keys[SDL_SCANCODE_A]) {
 			moveAmount += -75.0f;
+			flipHorizontal = true;
 		} 
 		if (keys[SDL_SCANCODE_D]) {
 			moveAmount += 75.0f;
+			flipHorizontal = false;
 		}
 		playerX += moveAmount * deltaTime;
 
@@ -79,14 +81,16 @@ int main(int argc, char *argv[]){
 			.h = spriteSize,
 		};
 
-		SDL_RenderTexture(state.renderer, idleTex, &src, &dst);
+		// Places the sprite and flips it depending on if the user is pressing the a or d key
+		SDL_RenderTextureRotated(state.renderer, res.texIdle, &src, &dst, 0, nullptr, 
+			(flipHorizontal) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
 
 		// swap buffer and present
 		SDL_RenderPresent(state.renderer);
 		prevTime = nowTime;
 	}
 
-	SDL_DestroyTexture(idleTex);
+	res.unload();
 	cleanup(state);
 	return 0;
 }

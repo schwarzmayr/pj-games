@@ -45,13 +45,13 @@ else()
 	CPMAddPackage("gh:libsdl-org/SDL_image#329953c")
 endif()
 
-# Link to the actual SDL3 library and add executable.
-foreach(target hello demo)
-	add_executable(${target} WIN32 ${target}.cpp)
-	target_link_libraries(${target} PRIVATE SDL3::SDL3 SDL3_image::SDL3_image)
-	set_target_properties(${target} PROPERTIES
-	VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-)
-endforeach()
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendored/glm")
+	# This assumes you have added SDL as a submodule in vendored/SDL
+	add_subdirectory(vendored/glm EXCLUDE_FROM_ALL)
+else()
+	# Download package
+	CPMAddPackage("gh:g-truc/glm#6f14f47")
+endif()
 
-# set local file to find images
+# Add subdirectories to keep it clean
+add_subdirectory("Source")
