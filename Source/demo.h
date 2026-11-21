@@ -1,12 +1,17 @@
 #pragma once
 
+#include <array>
+#include <glm/glm.hpp>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3_image/SDL_image.h>
 #include <string>
 #include <vector>
 
-#include "animation.h"
+// As gameobject.h alrdy includes animation.h, we can use that instead
+#include "gameobject.h"
+
+using namespace std;
 
 struct SDLState
 {
@@ -15,10 +20,21 @@ struct SDLState
 	int width, height, logW, logH;
 };
 
-using namespace std;
+// This will hold almost everything on screen i.e. game objects, players
+const size_t LAYER_IDX_LEVEL = 0;
+const size_t LAYER_IDX_CHARACTER = 1;
 
-bool initialize(SDLState &state);
-void cleanup(SDLState &state);
+struct GameState
+{
+	std::array<std::vector<GameObject>, 2> layers;
+	// Use to capture the player index within the game object
+	int playerIndex;
+
+	GameState()
+	{
+		playerIndex = 0;
+	}
+};
 
 // Creating a struct to load/unload assets and pass around functions is the simplest way possible for managing them
 struct Resources
@@ -57,3 +73,8 @@ struct Resources
 		}
 	}
 };
+
+bool initialize(SDLState&);
+void cleanup(SDLState&);
+void drawObject(const SDLState&, GameState&, GameObject&, float);
+

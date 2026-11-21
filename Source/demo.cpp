@@ -18,12 +18,20 @@ int main(int argc, char *argv[]){
 	Resources res;
 	res.load(state);
 
+	// Create the game state holding all layers
+	GameState gs;
+
+	// create player object
+	GameObject player;
+	player.type = ObjectType::player;
+	player.texture = res.texIdle;
+	player.animations = res.playerAnims;
+	player.currentAnimation = res.ANIM_PLAYER_IDLE;
+	gs.layers[LAYER_IDX_CHARACTER].push_back(player);
+
 	// setup game data
 	const bool* keys = SDL_GetKeyboardState(nullptr);
-	float playerX = 150;
-	const float floor = state.logH;
 	uint64_t prevTime = SDL_GetTicks();
-	bool flipHorizontal = false;
 
 	// start game loop
 	bool running = true;
@@ -48,7 +56,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 
-		// handle movement, in games, we do this by coding the amount per second rather than just an arbritary number
+/*		// handle movement, in games, we do this by coding the amount per second rather than just an arbritary number
 		float moveAmount = 0;
 		if (keys[SDL_SCANCODE_A]) {
 			moveAmount += -75.0f;
@@ -58,32 +66,29 @@ int main(int argc, char *argv[]){
 			moveAmount += 75.0f;
 			flipHorizontal = false;
 		}
-		playerX += moveAmount * deltaTime;
+		playerX += moveAmount * deltaTime; */
+
+
+		// The below code all the way to draw all objects is what ties the animation loop to the game
+		// update all objects before they are drawn
+		for (auto& layer : gs.layers) {
+			for (GameObject& obj : layer) {
+				if (obj.currentAnimation != -1) {
+					obj.animations[obj.currentAnimation].step(deltaTime);
+				}
+			}
+		}
 
 		// perform drawing commands
 		SDL_SetRenderDrawColor(state.renderer, 20, 10, 30, 255);
 		SDL_RenderClear(state.renderer);
 
-		// Set a constant variable to be used for logical size to keep scaling constant
-		const float spriteSize = 32;
-		// Create a variable with SDL_FRect to specify part of the image to draw
-		SDL_FRect src{
-			.x = 0,
-			.y = 0,
-			.w = spriteSize,
-			.h = spriteSize,
-		};
-
-		SDL_FRect dst{
-			.x = playerX,
-			.y = floor - spriteSize,
-			.w = spriteSize,
-			.h = spriteSize,
-		};
-
-		// Places the sprite and flips it depending on if the user is pressing the a or d key
-		SDL_RenderTextureRotated(state.renderer, res.texIdle, &src, &dst, 0, nullptr, 
-			(flipHorizontal) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE);
+		// draw all objects
+		for (auto& layer : gs.layers) {
+			for (GameObject& obj : layer) {
+				drawObject(state, gs, obj, deltaTime);
+			}
+		}
 
 		// swap buffer and present
 		SDL_RenderPresent(state.renderer);
@@ -132,4 +137,28 @@ void cleanup(SDLState &state) {
 	SDL_DestroyRenderer(state.renderer);
 	SDL_DestroyWindow(state.window);
 	SDL_Quit();
+}
+
+void drawObject(const SDLState& state, GameState& gs, GameObject& obj, float deltaTime) {
+	// Set a constant variable to be used for logical size to keep scaling constant
+	const float spriteSize = 32;
+	float srcX = obj.currentAnimation != -1 ? obj.animations[obj.currentAnimation].currentFrame() * spriteSize : 0.0f;
+	// Create a variable with SDL_FRect to specify part of the image to draw
+	SDL_FRect src{
+		.x = srcX,
+		.y = 0,
+		.w = spriteSize,
+		.h = spriteSize,
+	};
+
+	SDL_FRect dst{
+		.x = obj.position.x,
+		.y = obj.position.y,
+		.w = spriteSize,
+		.h = spriteSize,
+	};
+
+	SDL_FlipMode flipmode = obj.direction == -1 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+	// Places the sprite and flips it depending on if the user is pressing the a or d key
+	SDL_RenderTextureRotated(state.renderer, obj.texture, &src, &dst, 0, nullptr, flipmode);
 }

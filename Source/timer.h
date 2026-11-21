@@ -10,7 +10,7 @@ public:
 
 	void step(float deltaTime) {
 		time += deltaTime;
-		if (time >= length) {
+		while (time >= length) {
 			time -= length;
 		}
 	}
