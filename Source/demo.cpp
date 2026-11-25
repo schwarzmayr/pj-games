@@ -5,7 +5,7 @@
 int main(int argc, char *argv[]){
 
 	SDLState state{};
-	state.width = 800;
+	state.width = 1200;
 	state.height = 600;
 	state.logW = 640;
 	state.logH = 320;
@@ -21,16 +21,10 @@ int main(int argc, char *argv[]){
 	// Create the game state holding all layers
 	GameState gs;
 
-	// create player object
-	GameObject player;
-	player.type = ObjectType::player;
-	player.texture = res.texIdle;
-	player.animations = res.playerAnims;
-	player.currentAnimation = res.ANIM_PLAYER_IDLE;
-	gs.layers[LAYER_IDX_CHARACTER].push_back(player);
+	// Uses createTiles function to draw the map following the local array design
+	createTiles(state, gs, res);
 
 	// setup game data
-	const bool* keys = SDL_GetKeyboardState(nullptr);
 	uint64_t prevTime = SDL_GetTicks();
 
 	// start game loop
@@ -73,6 +67,9 @@ int main(int argc, char *argv[]){
 		// update all objects before they are drawn
 		for (auto& layer : gs.layers) {
 			for (GameObject& obj : layer) {
+				// update positions
+				update(state, gs, res, obj, deltaTime);
+				// update animations
 				if (obj.currentAnimation != -1) {
 					obj.animations[obj.currentAnimation].step(deltaTime);
 				}
@@ -161,4 +158,208 @@ void drawObject(const SDLState& state, GameState& gs, GameObject& obj, float del
 	SDL_FlipMode flipmode = obj.direction == -1 ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
 	// Places the sprite and flips it depending on if the user is pressing the a or d key
 	SDL_RenderTextureRotated(state.renderer, obj.texture, &src, &dst, 0, nullptr, flipmode);
+}
+
+void update(const SDLState& state, GameState& gs, Resources& res, GameObject& obj, float deltaTime) {
+	
+	if (obj.dynamic) {
+		// Gravity!
+		obj.velocity += glm::vec2(0, 500) * deltaTime;
+	}
+
+	// Updates the player object
+	if (obj.type == ObjectType::player) {
+		float currentDirection = 0;
+		if (state.keys[SDL_SCANCODE_A]) {
+			currentDirection += -1;
+		}
+		if (state.keys[SDL_SCANCODE_D]) {
+			currentDirection += 1;
+		}
+		if (currentDirection) {
+			obj.direction = currentDirection;
+		}
+
+		// Manages the different states of a player
+		switch (obj.data.player.state) {
+			case PlayerState::idle:
+				if (currentDirection) {
+					obj.data.player.state = PlayerState::running;
+					obj.texture = res.texRun;
+					obj.currentAnimation = res.ANIM_PLAYER_RUN;
+				}
+				else {
+					//deceleration
+					if (obj.velocity.x) {
+						const float factor = obj.velocity.x > 0 ? -1.5f : 1.5f;
+						float amount = factor * obj.acceleration.x * deltaTime;
+						if (std::abs(obj.velocity.x) < std::abs(amount)) {
+							obj.velocity.x = 0;
+						}
+						else {
+							obj.velocity.x += amount;
+						}
+					}
+				}
+				break;
+			case PlayerState::running:
+				if (!currentDirection) {
+					obj.data.player.state = PlayerState::idle;
+					obj.texture = res.texIdle;
+					obj.currentAnimation = res.ANIM_PLAYER_IDLE;
+				}
+				break;
+		}
+
+		// Add acceleration into velocity
+		obj.velocity += currentDirection * obj.acceleration * deltaTime;
+		if (std::abs(obj.velocity.x) > obj.maxSpeedX) {
+			obj.velocity.x = currentDirection * obj.maxSpeedX;
+		}
+
+	}
+	// Add velocity to object position
+	obj.position += obj.velocity * deltaTime;
+
+	// Handle any collision detection
+	for (auto& layer : gs.layers) {
+		for (GameObject& objB : layer) {
+			if (&obj != &objB) {
+				checkCollision(state, gs, res, obj, objB, deltaTime);
+			}
+		}
+	}
+}
+
+void collisionResponse(const SDLState& state, GameState& gs, const Resources& res, const SDL_FRect& rectA,
+	const SDL_FRect& rectB, const SDL_FRect& rectC, GameObject& a, GameObject& b, float deltaTime) {
+	
+	// object to be checked
+	if (a.type == ObjectType::player) {
+		// object that is colliding
+		switch (b.type) {
+			case ObjectType::level:
+				if (rectC.w < rectC.h) {
+					// horizontal collision
+					// First check if any velocity is still present
+					if (a.velocity.x > 0) {
+						// Collision on the right of the player
+						a.position.x -= rectC.w * 5;
+					}
+					else if (a.velocity.x < 0) {
+						// Collision on the left of player
+						a.position.x += rectC.w;
+					}
+					// Stop from moving
+					a.velocity.x = 0;
+				}
+				else {
+					// vertical collision
+					if (a.velocity.y > 0) {
+						// Collision above the object
+						a.position.y -= rectC.h;
+					}
+					else if (a.velocity.y < 0) {
+						// Collision below the object
+						a.position.y += rectC.h;
+					}
+					a.velocity.y = 0;
+				}
+				break;
+		}
+	}
+}
+
+void checkCollision(const SDLState& state, GameState& gs, const Resources& res, GameObject& a, GameObject& b, float deltaTime) {
+	
+	// A and B are objects in question, C is for the intersection rectangle
+	// We add the collider as a way to represent the sprite within the TILE_SIZE to avoid misrepresentation of collision rects
+	SDL_FRect rectA{
+		.x = a.position.x + a.collider.x, 
+		.y = a.position.y + a.collider.y,
+		.w = a.collider.w,
+		.h = a.collider.h,
+	};
+	SDL_FRect rectB{
+		.x = b.position.x + b.collider.x,
+		.y = b.position.y + b.collider.y,
+		.w = b.collider.w,
+		.h = b.collider.h,
+	};
+	SDL_FRect rectC{ 0 };
+
+	// true if a SDL_FRect struct is returned
+	if (SDL_GetRectIntersectionFloat(&rectA, &rectB, &rectC)) {
+		collisionResponse(state, gs, res, rectA, rectB, rectC, a, b, deltaTime);
+	}
+}
+
+void createTiles(const SDLState& state, GameState& gs, const Resources& res) {
+	/*
+		0 - Empty
+		1 - Ground
+		2 - Panel
+		3 - Enemy
+		4 - Player
+		5 - Grass
+		6 - Brick
+	*/
+	short map[MAP_ROWS][MAP_COLS] = {
+		0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	};
+
+	// Lambda function to create each object quickly (notice that certain objects i.e. player have extra parameters to change)
+	const auto createObject = [&state](int r, int c, SDL_Texture* tex, ObjectType type) {
+		GameObject o;
+		o.type = type;
+		o.position = glm::vec2(c * TILE_SIZE, state.logH - (MAP_ROWS - r) * TILE_SIZE);
+		o.texture = tex;
+		o.collider = {
+			.x = 0,
+			.y = 0,
+			.w = TILE_SIZE,
+			.h = TILE_SIZE,
+		};
+		return o;
+	};
+
+	for (int r = 0; r < MAP_ROWS; r++) {
+		for (int c = 0; c < MAP_COLS; c++) {
+			GameObject o;
+			switch (map[r][c]) {
+				case 1:
+					// Create ground object
+					o = createObject(r, c, res.texGround, ObjectType::level);
+					gs.layers[LAYER_IDX_LEVEL].push_back(o);
+					break;
+				case 2:
+					// Create panel object
+					o = createObject(r, c, res.texPanel, ObjectType::level);
+					gs.layers[LAYER_IDX_LEVEL].push_back(o);
+					break;
+				case 4:
+					// Create player object
+					GameObject player = createObject(r, c, res.texIdle, ObjectType::player);;
+					// How we find the models current position
+					player.data.player = PlayerData();
+					player.animations = res.playerAnims;
+					player.currentAnimation = res.ANIM_PLAYER_IDLE;
+					player.acceleration = glm::vec2(300, 0);
+					player.maxSpeedX = 100;
+					player.dynamic = true;
+					player.collider = {
+						.x = 11,
+						.y = 6,
+						.w = 10,
+						.h = 26
+					};
+					gs.layers[LAYER_IDX_CHARACTER].push_back(player);
+					break;		
+			}
+		}
+	}
 }

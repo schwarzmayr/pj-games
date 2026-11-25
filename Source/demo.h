@@ -18,11 +18,17 @@ struct SDLState
 	SDL_Window *window;
 	SDL_Renderer *renderer;
 	int width, height, logW, logH;
+	const bool* keys;
+
+	SDLState() : keys(SDL_GetKeyboardState(nullptr)) {}
 };
 
 // This will hold almost everything on screen i.e. game objects, players
 const size_t LAYER_IDX_LEVEL = 0;
 const size_t LAYER_IDX_CHARACTER = 1;
+const int MAP_ROWS = 5;
+const int MAP_COLS = 50;
+const int TILE_SIZE = 32;
 
 struct GameState
 {
@@ -32,7 +38,7 @@ struct GameState
 
 	GameState()
 	{
-		playerIndex = 0;
+		playerIndex = LAYER_IDX_CHARACTER;
 	}
 };
 
@@ -41,12 +47,13 @@ struct Resources
 {
 	// 0 represents the index of the idle animation that will down the line index into the list of idle animations
 	const int ANIM_PLAYER_IDLE = 0;
+	const int ANIM_PLAYER_RUN = 1;
 	std::vector<Animation> playerAnims{};
 
 	// This one is to hold SDL_Texture pointers
 	std::vector<SDL_Texture*> textures;
 	// Pointer to idle texture
-	SDL_Texture* texIdle;
+	SDL_Texture *texIdle, *texRun, *texBrick, *texGrass, *texGround, *texPanel;
 
 	SDL_Texture* loadTexture(SDL_Renderer* renderer, const string &filepath) {
 		// load game assets. SDL_texture is a memory holding an image on a graphics card
@@ -63,8 +70,15 @@ struct Resources
 		playerAnims.resize(5);
 		// This gives the animation a total of 8 frames with 1.6 secs length
 		playerAnims[ANIM_PLAYER_IDLE] = Animation(8, 1.6f);
+		playerAnims[ANIM_PLAYER_RUN] = Animation(4, 0.5f);
 
+		// Remember that these are all pointers that point to the IMG_LoadTexture in the function created above
 		texIdle = loadTexture(state.renderer, "data/idle.png");
+		texRun = loadTexture(state.renderer, "data/run.png");
+		texBrick = loadTexture(state.renderer, "data/tiles/brick.png");
+		texGrass = loadTexture(state.renderer, "data/tiles/grass.png");
+		texGround = loadTexture(state.renderer, "data/tiles/ground.png");
+		texPanel = loadTexture(state.renderer, "data/tiles/panel.png");
 	}
 
 	void unload() {
@@ -77,4 +91,7 @@ struct Resources
 bool initialize(SDLState&);
 void cleanup(SDLState&);
 void drawObject(const SDLState&, GameState&, GameObject&, float);
-
+void update(const SDLState&, GameState&, Resources&, GameObject&, float);
+void createTiles(const SDLState&, GameState&, const Resources&);
+void collisionResponse(const SDLState&, GameState&, const Resources&, const SDL_FRect&, const SDL_FRect&, const SDL_FRect&, GameObject&, GameObject&, float);
+void checkCollision(const SDLState&, GameState&, const Resources&, GameObject&, GameObject&, float);
