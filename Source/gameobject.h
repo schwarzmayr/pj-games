@@ -5,7 +5,7 @@
 
 #include "animation.h"
 
-// Create a enum that handles the different states of a player, this enum can be copied to track other objects throughout the game
+// Create a enum that handles the different states of a player, this enum can be copied to track other objects throughout the game i.e. bullets & enemies
 enum class PlayerState
 {
 	idle,
@@ -13,16 +13,32 @@ enum class PlayerState
 	jumping,
 };
 
+enum class BulletState
+{
+	moving,
+	colliding,
+	inactive,
+};
+
 struct PlayerData
 {
 	PlayerState state;
-	PlayerData() {
+	// Set rate of bullets allowed to be fired
+	Timer weaponTimer;
+
+	PlayerData() : weaponTimer(0.1f) {
 		state = PlayerState::idle;
 	}
 };
 
 struct LevelData {};
 struct EnemyData {};
+
+// Holds the bullet data
+struct BulletData {
+	BulletState state;
+	BulletData() : state(BulletState::moving) {};
+};
 
 // Unions are ways of handling memory as all data types in the union are assigned the same space of memory
 // Therefore when updated, it will only be holding the info of the data type MOST RECENTLY called
@@ -32,6 +48,7 @@ union ObjectData
 	PlayerData player;
 	LevelData level;
 	EnemyData enemy;
+	BulletData bullet;
 };
 
 // This struct defines all objects within the game, including player, background, enemies...
@@ -40,6 +57,7 @@ enum class ObjectType
 	player,
 	level,
 	enemy,
+	bullet,
 };
 
 struct GameObject
@@ -56,7 +74,7 @@ struct GameObject
 	// Bool to determine if object is a static non-moving object or can walk
 	bool dynamic;
 	bool grounded;
-	// The collider is used to reflect the actual sprite size inside the 
+	// The collider is used to reflect the actual sprite size inside the box
 	SDL_FRect collider;
 
 	// This initiates the data to level via initialising instantly with values instead of initialising it empty then adding data
