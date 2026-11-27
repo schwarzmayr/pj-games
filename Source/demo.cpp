@@ -19,7 +19,7 @@ int main(int argc, char *argv[]){
 	res.load(state);
 
 	// Create the game state holding all layers
-	GameState gs;
+	GameState gs(state);
 
 	// Uses createTiles function to draw the map following the local array design
 	createTiles(state, gs, res);
@@ -46,6 +46,13 @@ int main(int argc, char *argv[]){
 				case SDL_EVENT_WINDOW_RESIZED:
 					state.width = event.window.data1;
 					state.height = event.window.data2;
+					break;
+				// These ones are better for single instance cases, whereas update() is better for continuous motion key pressing instances
+				case SDL_EVENT_KEY_DOWN:
+					handleKeyInput(state, gs, gs.player(), event.key.scancode, true);
+					break;
+				case SDL_EVENT_KEY_UP:
+					handleKeyInput(state, gs, gs.player(), event.key.scancode, false);
 					break;
 			}
 		}
@@ -76,6 +83,10 @@ int main(int argc, char *argv[]){
 			}
 		}
 
+		// calculate viewpoint position
+		// This is performed before drawing but right after all object updates to give the sense the world is moving around the player
+		gs.mapViewport.x = (gs.player().position.x + TILE_SIZE / 2) - (gs.mapViewport.w / 2);
+
 		// perform drawing commands
 		SDL_SetRenderDrawColor(state.renderer, 20, 10, 30, 255);
 		SDL_RenderClear(state.renderer);
@@ -86,6 +97,12 @@ int main(int argc, char *argv[]){
 				drawObject(state, gs, obj, deltaTime);
 			}
 		}
+
+		// display debugo info
+		SDL_SetRenderDrawColor(state.renderer, 255, 255, 255, 255);
+		// This is used to display states and debugs for visualisation, remember to put it in c_str format, {} indicate value to be placed
+		SDL_RenderDebugText(state.renderer, 5, 5, std::format("State: {}", static_cast<int>(gs.player().data.player.state)).c_str());
+		SDL_RenderDebugText(state.renderer, 5, 15, std::format("FoundGround: {}", gs.player().grounded).c_str());
 
 		// swap buffer and present
 		SDL_RenderPresent(state.renderer);
@@ -149,7 +166,9 @@ void drawObject(const SDLState& state, GameState& gs, GameObject& obj, float del
 	};
 
 	SDL_FRect dst{
-		.x = obj.position.x,
+		// mapViewport is subtracted to allow for offset of camera over the map, without subtraction, our calculation of viewport has no effect
+		// on the visuals
+		.x = obj.position.x - gs.mapViewport.x,
 		.y = obj.position.y,
 		.w = spriteSize,
 		.h = spriteSize,
@@ -185,8 +204,6 @@ void update(const SDLState& state, GameState& gs, Resources& res, GameObject& ob
 			case PlayerState::idle:
 				if (currentDirection) {
 					obj.data.player.state = PlayerState::running;
-					obj.texture = res.texRun;
-					obj.currentAnimation = res.ANIM_PLAYER_RUN;
 				}
 				else {
 					//deceleration
@@ -201,13 +218,28 @@ void update(const SDLState& state, GameState& gs, Resources& res, GameObject& ob
 						}
 					}
 				}
+				obj.texture = res.texIdle;
+				obj.currentAnimation = res.ANIM_PLAYER_IDLE;
 				break;
 			case PlayerState::running:
+				// Changeing back to idle animation if no direction
 				if (!currentDirection) {
 					obj.data.player.state = PlayerState::idle;
-					obj.texture = res.texIdle;
-					obj.currentAnimation = res.ANIM_PLAYER_IDLE;
 				}
+
+				// Moving in opposite direction of velocity to implement sliding
+				if (obj.velocity.x * obj.direction < 0 && obj.grounded) {
+					obj.texture = res.texSlide;
+					obj.currentAnimation = res.ANIM_PLAYER_SLIDE;
+				}
+				else {
+					obj.texture = res.texRun;
+					obj.currentAnimation = res.ANIM_PLAYER_RUN;
+				}
+				break;
+			case PlayerState::jumping:
+				obj.texture = res.texRun;
+				obj.currentAnimation = res.ANIM_PLAYER_RUN;
 				break;
 		}
 
@@ -222,11 +254,37 @@ void update(const SDLState& state, GameState& gs, Resources& res, GameObject& ob
 	obj.position += obj.velocity * deltaTime;
 
 	// Handle any collision detection
+	bool foundGround = false;
 	for (auto& layer : gs.layers) {
 		for (GameObject& objB : layer) {
 			if (&obj != &objB) {
 				checkCollision(state, gs, res, obj, objB, deltaTime);
+
+				// grounded sensor to check if object is on a ground by creating a small heigh rect just under the dynamic object
+				SDL_FRect sensor{
+					.x = obj.position.x + obj.collider.x,
+					.y = obj.position.y + obj.collider.y + obj.collider.h,
+					.w = obj.collider.w,
+					.h = 1
+				};
+				SDL_FRect rectB{
+					.x = objB.position.x + objB.collider.x,
+					.y = objB.position.y + objB.collider.y,
+					.w = objB.collider.w,
+					.h = objB.collider.h,
+				};
+				if (SDL_HasRectIntersectionFloat(&sensor, &rectB)) {
+					foundGround = true;
+				}
+
 			}
+		}
+	}
+	if (obj.grounded != foundGround) {
+		// Determines if state is grounded or airborne and adjust object as needed
+		obj.grounded = foundGround;
+		if (foundGround && obj.type == ObjectType::player) {
+			obj.data.player.state = PlayerState::running;
 		}
 	}
 }
@@ -244,7 +302,7 @@ void collisionResponse(const SDLState& state, GameState& gs, const Resources& re
 					// First check if any velocity is still present
 					if (a.velocity.x > 0) {
 						// Collision on the right of the player
-						a.position.x -= rectC.w * 5;
+						a.position.x -= rectC.w;
 					}
 					else if (a.velocity.x < 0) {
 						// Collision on the left of player
@@ -305,14 +363,15 @@ void createTiles(const SDLState& state, GameState& gs, const Resources& res) {
 		6 - Brick
 	*/
 	short map[MAP_ROWS][MAP_COLS] = {
-		0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		2, 0, 0, 2, 2, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	};
 
 	// Lambda function to create each object quickly (notice that certain objects i.e. player have extra parameters to change)
+	// [] represent capture clause which are local variables that lambda can access to modify, & operator indicate lambda to access existing variable instead of copying it
 	const auto createObject = [&state](int r, int c, SDL_Texture* tex, ObjectType type) {
 		GameObject o;
 		o.type = type;
@@ -357,9 +416,36 @@ void createTiles(const SDLState& state, GameState& gs, const Resources& res) {
 						.w = 10,
 						.h = 26
 					};
-					gs.layers[LAYER_IDX_CHARACTER].push_back(player);
+					gs.layers[LAYER_IDX_CHARACTERS].push_back(player);
+					gs.playerIndex = gs.layers[LAYER_IDX_CHARACTERS].size() - 1;
 					break;		
 			}
+		}
+	}
+	// To ensure a player was initialized properly
+	assert(gs.playerIndex != -1);
+}
+
+// Useful for handling one-case instances instead of continuous
+void handleKeyInput(const SDLState& state, GameState& gs, GameObject& obj, SDL_Scancode key, bool keyDown) {
+	
+	const float JUMP_FORCE = -200.0f;
+	
+	// Check if player is jumping
+	if (obj.type == ObjectType::player) {
+		switch (obj.data.player.state) {
+			case PlayerState::idle:
+				if (key == SDL_SCANCODE_W && keyDown) {
+					obj.data.player.state = PlayerState::jumping;
+					obj.velocity.y += JUMP_FORCE;
+				}
+				break;
+			case PlayerState::running:
+				if (key == SDL_SCANCODE_W && keyDown) {
+					obj.data.player.state = PlayerState::jumping;
+					obj.velocity.y += JUMP_FORCE;
+				}
+				break;
 		}
 	}
 }

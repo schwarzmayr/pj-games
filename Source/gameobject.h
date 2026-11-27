@@ -53,7 +53,9 @@ struct GameObject
 	std::vector<Animation> animations;
 	int currentAnimation;
 	SDL_Texture* texture;
+	// Bool to determine if object is a static non-moving object or can walk
 	bool dynamic;
+	bool grounded;
 	// The collider is used to reflect the actual sprite size inside the 
 	SDL_FRect collider;
 
@@ -67,5 +69,6 @@ struct GameObject
 		currentAnimation = -1;
 		texture = nullptr;
 		dynamic = false;
+		grounded = false;
 	}
 };

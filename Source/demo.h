@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <format>
 #include <glm/glm.hpp>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -25,7 +26,7 @@ struct SDLState
 
 // This will hold almost everything on screen i.e. game objects, players
 const size_t LAYER_IDX_LEVEL = 0;
-const size_t LAYER_IDX_CHARACTER = 1;
+const size_t LAYER_IDX_CHARACTERS = 1;
 const int MAP_ROWS = 5;
 const int MAP_COLS = 50;
 const int TILE_SIZE = 32;
@@ -35,11 +36,20 @@ struct GameState
 	std::array<std::vector<GameObject>, 2> layers;
 	// Use to capture the player index within the game object
 	int playerIndex;
+	SDL_FRect mapViewport;
 
-	GameState()
+	GameState(const SDLState &state)
 	{
-		playerIndex = LAYER_IDX_CHARACTER;
+		playerIndex = -1;
+		mapViewport = SDL_FRect{
+			.x = 0,
+			.y = 0,
+			.w = static_cast<float>(state.logW),
+			.h = static_cast<float>(state.logH),
+		};
 	}
+	// Function to get player object when loaded
+	GameObject& player() { return layers[LAYER_IDX_CHARACTERS][playerIndex]; }
 };
 
 // Creating a struct to load/unload assets and pass around functions is the simplest way possible for managing them
@@ -48,12 +58,13 @@ struct Resources
 	// 0 represents the index of the idle animation that will down the line index into the list of idle animations
 	const int ANIM_PLAYER_IDLE = 0;
 	const int ANIM_PLAYER_RUN = 1;
+	const int ANIM_PLAYER_SLIDE = 2;
 	std::vector<Animation> playerAnims{};
 
 	// This one is to hold SDL_Texture pointers
 	std::vector<SDL_Texture*> textures;
 	// Pointer to idle texture
-	SDL_Texture *texIdle, *texRun, *texBrick, *texGrass, *texGround, *texPanel;
+	SDL_Texture *texIdle, *texRun, *texSlide, *texBrick, *texGrass, *texGround, *texPanel;
 
 	SDL_Texture* loadTexture(SDL_Renderer* renderer, const string &filepath) {
 		// load game assets. SDL_texture is a memory holding an image on a graphics card
@@ -71,10 +82,12 @@ struct Resources
 		// This gives the animation a total of 8 frames with 1.6 secs length
 		playerAnims[ANIM_PLAYER_IDLE] = Animation(8, 1.6f);
 		playerAnims[ANIM_PLAYER_RUN] = Animation(4, 0.5f);
+		playerAnims[ANIM_PLAYER_SLIDE] = Animation(1, 1.0f);
 
 		// Remember that these are all pointers that point to the IMG_LoadTexture in the function created above
 		texIdle = loadTexture(state.renderer, "data/idle.png");
 		texRun = loadTexture(state.renderer, "data/run.png");
+		texSlide = loadTexture(state.renderer, "data/slide.png");
 		texBrick = loadTexture(state.renderer, "data/tiles/brick.png");
 		texGrass = loadTexture(state.renderer, "data/tiles/grass.png");
 		texGround = loadTexture(state.renderer, "data/tiles/ground.png");
@@ -95,3 +108,4 @@ void update(const SDLState&, GameState&, Resources&, GameObject&, float);
 void createTiles(const SDLState&, GameState&, const Resources&);
 void collisionResponse(const SDLState&, GameState&, const Resources&, const SDL_FRect&, const SDL_FRect&, const SDL_FRect&, GameObject&, GameObject&, float);
 void checkCollision(const SDLState&, GameState&, const Resources&, GameObject&, GameObject&, float);
+void handleKeyInput(const SDLState&, GameState&, GameObject&, SDL_Scancode, bool);
